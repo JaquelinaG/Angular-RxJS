@@ -1,41 +1,53 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 
-import { Subscription } from 'rxjs';
+import { EMPTY, Subject, combineLatest, BehaviorSubject } from 'rxjs';
 
-import { Product } from './product';
 import { ProductService } from './product.service';
+import { catchError, map, startWith } from 'rxjs/operators';
+import { ProductCategoryService } from '../product-categories/product-category.service';
 
 @Component({
   templateUrl: './product-list.component.html',
-  styleUrls: ['./product-list.component.css']
+  styleUrls: ['./product-list.component.css'],
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class ProductListComponent implements OnInit, OnDestroy {
+export class ProductListComponent {
   pageTitle = 'Product List';
-  errorMessage = '';
-  categories;
+  private errorMessageSubject = new Subject<string>();
+  private categorySelectedSubject = new BehaviorSubject<number>(0);
 
-  products: Product[] = [];
-  sub: Subscription;
+  errorMessage$ = this.errorMessageSubject.asObservable();
+  categorySelectedAction$ = this.categorySelectedSubject.asObservable();
 
-  constructor(private productService: ProductService) { }
 
-  ngOnInit(): void {
-    this.sub = this.productService.getProducts()
-      .subscribe(
-        products => this.products = products,
-        error => this.errorMessage = error
-      );
-  }
+  products$ = combineLatest([
+    this.productService.productsWithAdd$,
+    this.categorySelectedAction$
+  ]).pipe(
+    map(([products, selectedCategoryId]) =>
+      products.filter(p => selectedCategoryId ? p.categoryId == selectedCategoryId : true)),
+    catchError(err => {
+      this.errorMessageSubject.next(err);
+      return EMPTY;
+    })
+  );
 
-  ngOnDestroy(): void {
-    this.sub.unsubscribe();
-  }
+  categories$ = this.categoryService.productCategories$
+    .pipe(
+      catchError(err => {
+        this.errorMessageSubject.next(err);
+        return EMPTY;
+      })
+    );
+
+  constructor(private productService: ProductService,
+    private categoryService: ProductCategoryService) { }
 
   onAdd(): void {
-    console.log('Not yet implemented');
+    this.productService.addProduct();
   }
 
   onSelected(categoryId: string): void {
-    console.log('Not yet implemented');
+    this.categorySelectedSubject.next(+categoryId);
   }
 }
